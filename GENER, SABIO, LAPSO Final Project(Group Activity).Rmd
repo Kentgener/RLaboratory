@@ -3,8 +3,9 @@ title: "Final Project(Group Activity)"
 author: "Kent Hervey D. Gener BSIT2-B"
 date: "2023-12-22"
 output:
-  pdf_document: default
+  word_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -36,24 +37,29 @@ You can select 1 product from Amazon
 Or you can select 1 movie
 Or you can select reviews from SkyTrax https://www.airlinequality.com/review-pages/a-z-airline-reviews/ ;
 the reviews are for the different airlines, but you can only select 1 airline
+
+After scraping 300 reviews, have a basic sentiment analysis with your own analysis and data visualization. each visualization shall have its own description.
 ```{r}
 library(rvest)
 library(dplyr)
+library(tidytext)
+library(ggplot2)
+library(wordcloud)
 
-scrape <- function(url) {
+scrape_reviews <- function(url) {
   page <- read_html(url)
   
   user <- page %>% html_nodes(".display-name-link") %>% html_text()
   date <- page %>% html_nodes(".review-date") %>% html_text()
   rating <- page %>% html_nodes(".rating-other-user-rating") %>% html_text()
-  title <- page %>% html_nodes(".title") %>% html_text()
+  comment_title <- page %>% html_nodes(".title") %>% html_text()
   comment <- page %>% html_nodes(".text.show-more__control") %>% html_text()
   
-  reviews <- data.frame(User = user, Date = date, Rating = rating, Title = title, Comment = comment)
+  reviews <- data.frame(User = user, Date = date, Rating = rating, Title = comment_title, Comment = comment)
   return(reviews)
 }
 
-scrape_pages <- function(base_url) {
+scrape_multiple_pages <- function(base_url) {
   all_reviews <- data.frame()
   reviews_per_page <- 10
   total_reviews_target <- 300
@@ -61,7 +67,7 @@ scrape_pages <- function(base_url) {
   
   for (page_num in 1:num_pages) {
     url <- paste0(base_url, "&start=", (page_num - 1) * reviews_per_page)
-    reviews <- scrape(url)
+    reviews <- scrape_reviews(url)
     all_reviews <- bind_rows(all_reviews, reviews)
     
     if (nrow(all_reviews) >= total_reviews_target) {
@@ -73,48 +79,38 @@ scrape_pages <- function(base_url) {
 }
 
 base_url <- "https://www.imdb.com/title/tt6166392/reviews/?ref_=tt_ql_2"
-reviews_data <- scrape_pages(base_url)
+all_reviews <- scrape_multiple_pages(base_url)
+all_reviews <- head(all_reviews, 300)
+write.csv(all_reviews, "imdb_reviews.csv", row.names = FALSE)
 
-reviews_data <- head(reviews_data, 300)
-
-write.csv(reviews_data, "imdb_reviews.csv", row.names = FALSE)
-
-```
-
-
-After scraping 300 reviews, have a basic sentiment analysis with your own analysis and data visualization. each visualization shall have its own description.
-```{r}
-
-library(tidytext)
-library(ggplot2)
-library(dplyr)
-
-reviews_data <- read.csv("imdb_reviews.csv")
-reviews_tokens <- reviews_data %>%
+all_reviews <- read.csv("imdb_reviews.csv")
+all_reviews_tokens <- all_reviews %>%
   unnest_tokens(word, Comment)
 
 bing <- get_sentiments("bing")
 
-sentiment_data <- reviews_tokens %>%
+all_reviews_sentiment <- all_reviews_tokens %>%
   inner_join(bing, by = "word") %>%
   group_by(User) %>%
   summarize(SentimentScore = sum(sentiment == "positive") - sum(sentiment == "negative"))
 
-ggplot(sentiment_data, aes(x = reorder(User, SentimentScore), y = SentimentScore)) +
+wordcloud(words = all_reviews_tokens$word, freq = table(all_reviews_tokens$word), scale = c(3, 0.5), min.freq = 2, colors = brewer.pal(8, "Dark2"),
+          random.order = FALSE, rot.per = 0.35, use.r.layout = FALSE)
+
+ggplot(all_reviews_sentiment, aes(x = reorder(User, SentimentScore), y = SentimentScore)) +
   geom_bar(stat = "identity", fill = "skyblue", color = "black") +
-  labs(title = "IMDb Reviews Sentiment",
+  labs(title = "Sentiment Analysis of IMDb Reviews",
        x = "User",
        y = "Sentiment Score") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggplot(sentiment_data, aes(x = "", y = SentimentScore, fill = factor(SentimentScore > 0))) +
+ggplot(all_reviews_sentiment, aes(x = "", y = SentimentScore, fill = factor(SentimentScore > 0))) +
   geom_bar(stat = "identity", width = 1, color = "white") +
   coord_polar("y") +
-  labs(title = "Sentiment Distribution",
+  labs(title = "Sentiment Distribution of IMDb Reviews",
        x = NULL,
        y = NULL) +
   theme_minimal()
-
 
 ```
